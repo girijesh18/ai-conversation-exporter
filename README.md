@@ -42,10 +42,12 @@ A lightweight browser extension (Firefox + Chrome) that saves your AI conversati
 
 ### Chrome / Brave / Edge
 
-1. Go to `chrome://extensions`
+1. Go to `chrome://extensions` (or `brave://extensions` / `edge://extensions`)
 2. Enable **Developer mode** (top-right toggle)
 3. Click **Load unpacked** → select this folder
 4. Open any conversation and click the toolbar icon
+
+> Brave and Edge are Chromium-based — the extension works identically to Chrome with no changes needed.
 
 ### Firefox (Permanent via AMO)
 
