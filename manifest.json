@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Conversation Saver",
+  "short_name": "Chat Saver",
+  "version": "1.0.0",
+  "description": "Export your ChatGPT conversations locally as TXT, Markdown, JSON, or HTML. No data collection. No external requests.",
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "32":  "icons/icon32.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "permissions": [],
+
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js":  ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chatgpt-conversation-saver@yourname.dev",
+      "strict_min_version": "109.0"
+    }
+  }
+}

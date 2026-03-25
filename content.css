@@ -1,0 +1,355 @@
+/* ChatGPT Conversation Saver — content.css
+   All selectors are namespaced under .ccs-* to avoid collisions. */
+
+/* ─── CSS Custom Properties ──────────────────────────────────────────────────── */
+:root {
+  --ccs-green:    #10a37f;
+  --ccs-green-dk: #0d8a6a;
+  --ccs-white:    #ffffff;
+  --ccs-radius:   14px;
+  --ccs-shadow:   0 8px 32px rgba(0, 0, 0, 0.18);
+  --ccs-font:     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ccs-z:        2147483647; /* max z-index */
+}
+
+/* ─── Floating Action Button ─────────────────────────────────────────────────── */
+#ccs-ext-btn.ccs-fab {
+  position: fixed;
+  bottom: 90px;
+  right: 22px;
+  z-index: var(--ccs-z);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+
+  background: var(--ccs-green);
+  color: var(--ccs-white);
+  box-shadow: 0 4px 16px rgba(16, 163, 127, 0.45);
+
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  outline-offset: 3px;
+}
+
+#ccs-ext-btn.ccs-fab:hover {
+  background: var(--ccs-green-dk);
+  transform: scale(1.08);
+  box-shadow: 0 6px 22px rgba(16, 163, 127, 0.55);
+}
+
+#ccs-ext-btn.ccs-fab:focus-visible {
+  outline: 2px solid var(--ccs-green);
+}
+
+#ccs-ext-btn.ccs-fab:active {
+  transform: scale(0.96);
+}
+
+#ccs-ext-btn.ccs-fab svg {
+  display: block;
+}
+
+/* ─── Overlay / Backdrop ─────────────────────────────────────────────────────── */
+.ccs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ccs-z);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.ccs-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ─── Modal Card ─────────────────────────────────────────────────────────────── */
+.ccs-modal {
+  background: var(--ccs-white);
+  border-radius: var(--ccs-radius);
+  box-shadow: var(--ccs-shadow);
+  width: 100%;
+  max-width: 420px;
+  padding: 1.75rem 1.75rem 1.5rem;
+  font-family: var(--ccs-font);
+  color: #111;
+
+  transform: scale(0.96) translateY(8px);
+  transition: transform 0.2s ease;
+}
+
+.ccs-overlay--visible .ccs-modal {
+  transform: scale(1) translateY(0);
+}
+
+.ccs-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.ccs-modal__title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f0f0f;
+  margin: 0;
+}
+
+.ccs-modal__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: #888;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ccs-modal__close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.ccs-modal__close:focus-visible {
+  outline: 2px solid var(--ccs-green);
+  outline-offset: 2px;
+}
+
+.ccs-modal__sub {
+  font-size: 0.82rem;
+  color: #777;
+  margin-bottom: 1.2rem;
+  line-height: 1.45;
+}
+
+/* ─── Format Button Grid ─────────────────────────────────────────────────────── */
+.ccs-modal__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.ccs-format-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+
+  background: #f6f6f6;
+  border: 1.5px solid #e6e6e6;
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 1rem 0.5rem;
+  font-family: var(--ccs-font);
+  color: #222;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+
+.ccs-format-btn:hover {
+  background: #edf8f5;
+  border-color: var(--ccs-green);
+  transform: translateY(-2px);
+}
+
+.ccs-format-btn:focus-visible {
+  outline: 2px solid var(--ccs-green);
+  outline-offset: 2px;
+}
+
+.ccs-format-btn:active {
+  transform: translateY(0);
+}
+
+.ccs-format-btn__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  font-style: normal;
+}
+
+.ccs-format-btn__label {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ccs-format-btn__ext {
+  font-size: 0.72rem;
+  color: #888;
+  font-family: "Fira Code", Consolas, monospace;
+}
+
+/* ─── Divider ────────────────────────────────────────────────────────────────── */
+.ccs-modal__divider {
+  height: 1px;
+  background: #ebebeb;
+  margin-bottom: 0.85rem;
+}
+
+/* ─── Copy Button ────────────────────────────────────────────────────────────── */
+.ccs-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+
+  background: none;
+  border: 1.5px solid #d6d6d6;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+  font-family: var(--ccs-font);
+  font-size: 0.85rem;
+  color: #444;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ccs-copy-btn:hover {
+  background: #f4f4f4;
+  border-color: #bbb;
+}
+
+.ccs-copy-btn:focus-visible {
+  outline: 2px solid var(--ccs-green);
+  outline-offset: 2px;
+}
+
+.ccs-copy-btn__icon {
+  font-style: normal;
+  font-size: 1rem;
+}
+
+/* ─── Progress Indicator ─────────────────────────────────────────────────────── */
+.ccs-progress {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.ccs-progress--visible {
+  display: flex;
+}
+
+.ccs-progress__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: #e0e0e0;
+  overflow: hidden;
+  position: relative;
+}
+
+.ccs-progress__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ccs-green);
+  animation: ccs-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes ccs-slide {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0%);   }
+  100% { transform: translateX(100%); }
+}
+
+.ccs-progress__label {
+  font-size: 0.78rem;
+  color: #888;
+  text-align: center;
+  font-family: var(--ccs-font);
+}
+
+/* ─── Toast ──────────────────────────────────────────────────────────────────── */
+#ccs-ext-toast {
+  position: fixed;
+  bottom: 148px;
+  right: 22px;
+  z-index: var(--ccs-z);
+
+  background: #1a1a1a;
+  color: #fff;
+  font-family: var(--ccs-font);
+  font-size: 0.83rem;
+  line-height: 1.4;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  word-break: break-word;
+
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+#ccs-ext-toast.ccs-toast--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#ccs-ext-toast.ccs-toast--error {
+  background: #c0392b;
+}
+
+/* ─── Dark mode ──────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .ccs-modal {
+    background: #1e1e1e;
+    color: #e0e0e0;
+  }
+
+  .ccs-modal__title { color: #f0f0f0; }
+
+  .ccs-modal__close { color: #aaa; }
+  .ccs-modal__close:hover { background: #2a2a2a; color: #eee; }
+
+  .ccs-modal__sub { color: #999; }
+
+  .ccs-format-btn {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+    color: #ddd;
+  }
+
+  .ccs-format-btn:hover {
+    background: #1a3330;
+    border-color: var(--ccs-green);
+  }
+
+  .ccs-format-btn__ext { color: #777; }
+
+  .ccs-modal__divider { background: #333; }
+
+  .ccs-copy-btn {
+    border-color: #3a3a3a;
+    color: #bbb;
+  }
+
+  .ccs-copy-btn:hover { background: #2a2a2a; border-color: #555; }
+
+  .ccs-progress__bar { background: #333; }
+}
