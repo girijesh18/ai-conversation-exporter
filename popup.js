@@ -149,7 +149,11 @@ ${rows}</div></body></html>`;
     el('platform-name').textContent = meta.name;
     const t = el('conv-title');
     t.textContent = stats.title || 'Untitled'; t.title = stats.title || '';
-    el('stats').innerHTML = `<strong>${stats.messageCount}</strong>msg${stats.messageCount !== 1 ? 's' : ''}<br>~${fmt(stats.wordCount)}&nbsp;words`;
+    const statsEl = el('stats');
+    const strong  = document.createElement('strong');
+    strong.textContent = stats.messageCount;
+    statsEl.replaceChildren(strong, `msg${stats.messageCount !== 1 ? 's' : ''}`, document.createElement('br'));
+    statsEl.append(`~${fmt(stats.wordCount)}\u00a0words`);
     showState('state-main');
   }
 
