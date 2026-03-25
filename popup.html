@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Conversation Exporter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Loading -->
+    <div id="state-loading" class="state">
+      <div class="spinner"></div>
+      <p class="state-msg">Scanning conversation…</p>
+    </div>
+
+    <!-- Not on a supported page -->
+    <div id="state-unsupported" class="state hidden">
+      <div class="state-icon">🔍</div>
+      <p class="state-title">Not on a supported page</p>
+      <p class="state-sub">Open a conversation on one of these platforms:</p>
+      <div class="pill-row">
+        <span class="pill">ChatGPT</span>
+        <span class="pill">Claude</span>
+        <span class="pill">Gemini</span>
+      </div>
+    </div>
+
+    <!-- Supported page but no conversation -->
+    <div id="state-empty" class="state hidden">
+      <div class="state-icon">💬</div>
+      <p class="state-title">No conversation found</p>
+      <p class="state-sub">Start or open a conversation, then click this button again.</p>
+    </div>
+
+    <!-- Main UI -->
+    <div id="state-main" class="hidden">
+
+      <header class="header">
+        <div class="platform-info">
+          <span id="platform-icon" class="platform-icon"></span>
+          <div class="platform-text">
+            <div id="platform-name" class="platform-name"></div>
+            <div id="conv-title" class="conv-title" title=""></div>
+          </div>
+        </div>
+        <div id="stats" class="stats"></div>
+      </header>
+
+      <div class="divider"></div>
+
+      <section class="section">
+        <p class="section-label">Download as file</p>
+        <div class="format-grid">
+          <button class="format-btn" data-format="txt">
+            <span class="format-icon">TXT</span>
+            <span class="format-name">Plain Text</span>
+          </button>
+          <button class="format-btn" data-format="md">
+            <span class="format-icon">#</span>
+            <span class="format-name">Markdown</span>
+          </button>
+          <button class="format-btn" data-format="json">
+            <span class="format-icon">{}</span>
+            <span class="format-name">JSON</span>
+          </button>
+          <button class="format-btn" data-format="html">
+            <span class="format-icon">&lt;/&gt;</span>
+            <span class="format-name">HTML</span>
+          </button>
+        </div>
+      </section>
+
+      <div class="divider"></div>
+
+      <section class="section section--actions">
+        <button class="action-btn" data-format="copy">
+          <span class="action-btn__icon">📋</span>
+          Copy as Markdown
+        </button>
+      </section>
+
+      <footer class="footer">
+        🔒 No data leaves your device &nbsp;·&nbsp; <span id="shortcut-hint"></span>
+      </footer>
+
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

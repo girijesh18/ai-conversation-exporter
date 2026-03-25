@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Conversation Saver",
-  "short_name": "Chat Saver",
-  "version": "1.0.0",
-  "description": "Export your ChatGPT conversations locally as TXT, Markdown, JSON, or HTML. No data collection. No external requests.",
+  "name": "AI Conversation Exporter",
+  "short_name": "AI Exporter",
+  "version": "2.0.0",
+  "description": "Export ChatGPT, Claude & Gemini conversations as TXT, Markdown, JSON or HTML. No data collection. No external requests.",
 
   "icons": {
     "16":  "icons/icon16.png",
@@ -12,21 +12,39 @@
     "128": "icons/icon128.png"
   },
 
-  "permissions": [],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Conversation Exporter"
+  },
+
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "MacCtrl+Shift+S"
+      },
+      "description": "Open AI Conversation Exporter"
+    }
+  },
+
+  "permissions": ["activeTab", "downloads"],
 
   "host_permissions": [
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
   ],
 
   "content_scripts": [
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
       ],
       "js":  ["content.js"],
-      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
@@ -37,7 +55,7 @@
 
   "browser_specific_settings": {
     "gecko": {
-      "id": "chatgpt-conversation-saver@yourname.dev",
+      "id": "ai-conversation-exporter@extension",
       "strict_min_version": "109.0"
     }
   }

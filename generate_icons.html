@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Generate Extension Icons</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 600px; margin: 0 auto; }
+    h1   { font-size: 1.4rem; }
+    p    { color: #555; font-size: 0.9rem; }
+    .grid { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.5rem 0; align-items: flex-end; }
+    canvas { display: block; border-radius: 8px; }
+    label  { font-size: 0.75rem; color: #777; display: block; margin-top: 4px; text-align: center; }
+    button {
+      background: #10a37f; color: #fff; border: none; padding: 0.7rem 1.5rem;
+      border-radius: 8px; cursor: pointer; font-size: 1rem; margin-top: 1rem;
+    }
+    button:hover { background: #0d8a6a; }
+    #status { margin-top: 1rem; color: #10a37f; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>ChatGPT Conversation Saver — Icon Generator</h1>
+  <p>
+    Open this file in any browser once to generate the PNG icons needed by the extension.
+    The files will be downloaded automatically to your downloads folder.
+    Move them into the <code>icons/</code> folder of the extension.
+  </p>
+
+  <div class="grid" id="preview"></div>
+
+  <button onclick="downloadAll()">Download all icons</button>
+  <div id="status"></div>
+
+  <script>
+    const SIZES = [16, 32, 48, 128];
+
+    function drawIcon(size) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const s   = size;
+
+      // Background circle
+      ctx.fillStyle = "#10a37f";
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw shapes in white
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineCap     = "round";
+      ctx.lineJoin    = "round";
+      ctx.lineWidth   = Math.max(1, s * 0.09);
+
+      const cx   = s / 2;
+      const topY = s * 0.22;
+      const midY = s * 0.64;
+      const botY = s * 0.78;
+      const tw   = s * 0.22;   // half-width of tray
+
+      // Vertical line (shaft of arrow)
+      ctx.beginPath();
+      ctx.moveTo(cx, topY);
+      ctx.lineTo(cx, midY);
+      ctx.stroke();
+
+      // Arrowhead chevron
+      ctx.beginPath();
+      ctx.moveTo(cx - tw, midY - tw * 0.8);
+      ctx.lineTo(cx, midY + tw * 0.3);
+      ctx.lineTo(cx + tw, midY - tw * 0.8);
+      ctx.stroke();
+
+      // Tray baseline
+      ctx.beginPath();
+      ctx.moveTo(cx - tw * 1.25, botY);
+      ctx.lineTo(cx + tw * 1.25, botY);
+      ctx.stroke();
+
+      return canvas;
+    }
+
+    // Preview
+    const grid = document.getElementById("preview");
+    SIZES.forEach((size) => {
+      const canvas = drawIcon(size);
+      const wrap   = document.createElement("div");
+      const lbl    = document.createElement("label");
+      lbl.textContent = `${size}×${size}`;
+      wrap.appendChild(canvas);
+      wrap.appendChild(lbl);
+      grid.appendChild(wrap);
+    });
+
+    function downloadAll() {
+      const status = document.getElementById("status");
+      let done = 0;
+      SIZES.forEach((size, i) => {
+        setTimeout(() => {
+          const canvas = drawIcon(size);
+          const a = document.createElement("a");
+          a.href     = canvas.toDataURL("image/png");
+          a.download = `icon${size}.png`;
+          a.click();
+          done++;
+          if (done === SIZES.length) {
+            status.textContent =
+              "✓ All icons downloaded! Move them into the icons/ folder.";
+          }
+        }, i * 200);  // stagger to avoid browser blocking
+      });
+    }
+  </script>
+</body>
+</html>

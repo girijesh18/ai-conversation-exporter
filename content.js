@@ -1,763 +1,216 @@
 /**
- * ChatGPT Conversation Saver - content.js
- *
- * Injects a save button into ChatGPT and exports conversations
- * locally in multiple formats. No network requests. No tracking.
- *
- * Supported formats: TXT · Markdown · JSON · HTML
+ * AI Conversation Exporter — content.js
+ * Lean extractor only. No formatters. No UI. No observers.
+ * Loaded on every matching page — must stay minimal.
  */
-
 (function () {
-  "use strict";
+  'use strict';
 
-  // ─── Constants ───────────────────────────────────────────────────────────────
+  const api = typeof browser !== 'undefined' ? browser : chrome;
 
-  const EXTENSION_ID = "ccs-ext";
-  const BTN_ID       = `${EXTENSION_ID}-btn`;
-  const MODAL_ID     = `${EXTENSION_ID}-modal`;
-  const TOAST_ID     = `${EXTENSION_ID}-toast`;
+  // Bail immediately if not on a supported platform
+  const PLATFORM = (() => {
+    const h = location.hostname;
+    if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) return 'chatgpt';
+    if (h.includes('claude.ai'))           return 'claude';
+    if (h.includes('gemini.google.com'))   return 'gemini';
+    return null;
+  })();
+  if (!PLATFORM) return;
 
-  /** Multiple selector attempts for each role — ChatGPT's DOM changes often. */
-  const SELECTORS = {
-    // Ordered by specificity; first match wins
-    messages: [
-      'article[data-testid^="conversation-turn"]',
-      '[data-message-author-role]',
-    ],
-    role: "data-message-author-role",
-    // Containers that hold rendered Markdown
-    prose: [
-      ".markdown.prose",
-      ".markdown",
-      ".prose",
-      "[class*='prose']",
-      "[class*='markdown']",
-    ],
-    // Fallback: direct text container
-    textFallback: [".whitespace-pre-wrap", "p", "div"],
-    title: [
-      'nav [class*="truncate"]',    // sidebar active item
-      'title',                       // document title (cleaned)
-    ],
-  };
+  // ── DOM helpers ─────────────────────────────────────────────────────────────
 
-  // ─── DOM helpers ─────────────────────────────────────────────────────────────
+  function qAll(sels, root = document) {
+    for (const s of sels) {
+      try { const r = Array.from(root.querySelectorAll(s)); if (r.length) return r; } catch (_) {}
+    }
+    return [];
+  }
 
-  /** Returns the first element found from a list of CSS selectors. */
-  function queryFirst(selectors, root = document) {
-    for (const sel of selectors) {
-      const el = root.querySelector(sel);
-      if (el) return el;
+  function qOne(sels, root = document) {
+    for (const s of sels) {
+      try { const r = root.querySelector(s); if (r) return r; } catch (_) {}
     }
     return null;
   }
 
-  /** Safely escape text for use inside HTML attributes / content. */
-  function escapeHTML(str) {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  function domOrder(a, b) {
+    return a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
   }
 
-  // ─── Conversation extraction ──────────────────────────────────────────────────
+  // ── Text/Markdown converters ─────────────────────────────────────────────────
 
-  /**
-   * Returns the conversation title, sanitised for use as a filename.
-   */
+  function toText(el) {
+    const c = el.cloneNode(true);
+    c.querySelectorAll('pre').forEach(p => {
+      const code = p.querySelector('code');
+      const lang = code ? (code.className.match(/language-(\w+)/) || [])[1] || '' : '';
+      p.replaceWith(`\n\`\`\`${lang}\n${(code || p).textContent}\n\`\`\`\n`);
+    });
+    c.querySelectorAll('p,li,h1,h2,h3,h4,br,div').forEach(n => n.append('\n'));
+    return c.textContent.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function toMd(el) {
+    function w(n) {
+      if (n.nodeType === 3) return n.textContent;
+      if (n.nodeType !== 1) return '';
+      const t = n.tagName.toLowerCase();
+      const k = Array.from(n.childNodes).map(w).join('');
+      if (t === 'h1') return `\n# ${k}\n`;
+      if (t === 'h2') return `\n## ${k}\n`;
+      if (t === 'h3') return `\n### ${k}\n`;
+      if (t === 'h4') return `\n#### ${k}\n`;
+      if (t === 'strong' || t === 'b')  return `**${k}**`;
+      if (t === 'em'     || t === 'i')  return `*${k}*`;
+      if (t === 's'      || t === 'del') return `~~${k}~~`;
+      if (t === 'a') { const h = n.getAttribute('href'); return h ? `[${k}](${h})` : k; }
+      if (t === 'code') {
+        if (n.parentElement?.tagName.toLowerCase() === 'pre') return n.textContent;
+        return `\`${n.textContent}\``;
+      }
+      if (t === 'pre') {
+        const c = n.querySelector('code');
+        const l = c ? (c.className.match(/language-(\w+)/) || [])[1] || '' : '';
+        return `\n\`\`\`${l}\n${(c || n).textContent}\n\`\`\`\n`;
+      }
+      if (t === 'ul') return '\n' + Array.from(n.children).filter(c => c.tagName === 'LI').map(li => `- ${w(li).trim()}`).join('\n') + '\n';
+      if (t === 'ol') return '\n' + Array.from(n.children).filter(c => c.tagName === 'LI').map((li, i) => `${i + 1}. ${w(li).trim()}`).join('\n') + '\n';
+      if (t === 'br') return '\n';
+      if (t === 'hr') return '\n---\n';
+      if (t === 'blockquote') return k.split('\n').map(l => `> ${l}`).join('\n');
+      if (t === 'p' || t === 'div' || t === 'section' || t === 'article') return `\n${k}\n`;
+      return k;
+    }
+    return w(el).replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // ── Auto-scroll (3 s hard cap) ───────────────────────────────────────────────
+
+  function autoScroll() {
+    const s = document.querySelector('main') ||
+              document.querySelector('[class*="overflow-y-auto"]') ||
+              document.documentElement;
+    return new Promise(resolve => {
+      const end = Date.now() + 3000;
+      let last = 0, stable = 0;
+      (function step() {
+        if (Date.now() >= end) return resolve();
+        s.scrollTop = s.scrollHeight;
+        const h = s.scrollHeight;
+        if (h === last) { if (++stable >= 2) return resolve(); }
+        else { stable = 0; last = h; }
+        setTimeout(step, 150);
+      })();
+    });
+  }
+
+  // ── Platform extractors ──────────────────────────────────────────────────────
+
+  function msgOf(el, role) {
+    return { role, text: toText(el), md: toMd(el), html: el.innerHTML };
+  }
+
+  function extractChatGPT() {
+    const turns = qAll(['article[data-testid^="conversation-turn"]', '[data-message-author-role]']);
+    return turns.flatMap(turn => {
+      const rEl = turn.hasAttribute('data-message-author-role') ? turn : turn.querySelector('[data-message-author-role]');
+      if (!rEl) return [];
+      const role = rEl.getAttribute('data-message-author-role') || 'unknown';
+      const cEl  = qOne(['.markdown.prose', '.markdown', '.prose', "[class*='prose']", "[class*='markdown']"], turn) || rEl;
+      return cEl.textContent.trim() ? [msgOf(cEl, role)] : [];
+    });
+  }
+
+  function extractClaude() {
+    // Strategy 1 — .human-turn / .ai-turn
+    const human = Array.from(document.querySelectorAll('.human-turn'));
+    const ai    = Array.from(document.querySelectorAll('.ai-turn'));
+    if (human.length || ai.length) {
+      const all = [...human.map(el => ({ el, role: 'user' })), ...ai.map(el => ({ el, role: 'assistant' }))].sort(domOrder);
+      const out = all.map(({ el, role }) => {
+        const c = qOne(['.whitespace-pre-wrap', '.prose', 'p'], el) || el;
+        return c.textContent.trim() ? msgOf(c, role) : null;
+      }).filter(Boolean);
+      if (out.length) return out;
+    }
+    // Strategy 2 — alternating turns
+    const turns = Array.from(document.querySelectorAll('[data-test-render-count]'));
+    if (turns.length) {
+      const out = turns.map((t, i) => {
+        const c = qOne(['.whitespace-pre-wrap', '.prose', 'p'], t) || t;
+        return c.textContent.trim() ? msgOf(c, i % 2 === 0 ? 'user' : 'assistant') : null;
+      }).filter(Boolean);
+      if (out.length) return out;
+    }
+    // Strategy 3 — font class names
+    const u = Array.from(document.querySelectorAll('[class*="font-user-message"]'));
+    const a = Array.from(document.querySelectorAll('[class*="font-claude-message"]'));
+    return [...u.map(el => ({ el, role: 'user' })), ...a.map(el => ({ el, role: 'assistant' }))]
+      .sort(domOrder).filter(({ el }) => el.textContent.trim()).map(({ el, role }) => msgOf(el, role));
+  }
+
+  function extractGemini() {
+    // Strategy 1 — separate user/ai elements
+    const u = Array.from(document.querySelectorAll('.query-text, .user-query-text, p.query-text, [class*="query-text"]'));
+    const a = Array.from(document.querySelectorAll('.model-response-text, [class*="model-response-text"], .response-text'));
+    if (u.length || a.length) {
+      const all = [...u.map(el => ({ el, role: 'user' })), ...a.map(el => ({ el, role: 'assistant' }))].sort(domOrder);
+      const out = all.filter(({ el }) => el.textContent.trim()).map(({ el, role }) => msgOf(el, role));
+      if (out.length) return out;
+    }
+    // Strategy 2 — conversation-turn containers
+    return qAll(['.conversation-turn, [class*="conversation-turn"]']).flatMap(turn => {
+      const out = [];
+      const uEl = qOne(['.query-text', '[class*="query"]'], turn);
+      const aEl = qOne(['.model-response-text', '.markdown', '[class*="response"]'], turn);
+      if (uEl?.textContent.trim()) out.push(msgOf(uEl, 'user'));
+      if (aEl?.textContent.trim()) out.push(msgOf(aEl, 'assistant'));
+      return out;
+    });
+  }
+
+  function extract() {
+    if (PLATFORM === 'chatgpt') return extractChatGPT();
+    if (PLATFORM === 'claude')  return extractClaude();
+    if (PLATFORM === 'gemini')  return extractGemini();
+    return [];
+  }
+
+  // ── Title ────────────────────────────────────────────────────────────────────
+
   function getTitle() {
-    // Try sidebar active link text first
-    const nav = document.querySelector(
-      'nav a[class*="active"], nav a[aria-current="page"]'
-    );
-    if (nav && nav.textContent.trim()) {
-      return nav.textContent.trim();
+    if (PLATFORM === 'chatgpt') {
+      const nav = document.querySelector('nav a[aria-current="page"]');
+      if (nav?.textContent.trim()) return nav.textContent.trim();
+      return document.title.replace(/\s*[–—-]\s*(ChatGPT|OpenAI).*/i, '').trim() || 'conversation';
     }
-
-    // Fall back to document.title (format: "message – ChatGPT")
-    const raw = document.title || "conversation";
-    return raw.replace(/\s*[–—-]\s*(ChatGPT|OpenAI).*/i, "").trim() || "conversation";
-  }
-
-  /** Sanitise a string for use as a filename. */
-  function sanitiseFilename(name) {
-    return name
-      .replace(/[/\\?%*:|"<>]/g, "-")
-      .replace(/\s+/g, "_")
-      .slice(0, 100)
-      .trim() || "conversation";
-  }
-
-  /**
-   * Converts an HTML element's content to clean plain text,
-   * preserving newlines around block elements and code blocks.
-   */
-  function elementToText(el) {
-    const clone = el.cloneNode(true);
-
-    // Preserve code blocks verbatim
-    clone.querySelectorAll("pre").forEach((pre) => {
-      const code = pre.querySelector("code");
-      const lang = code
-        ? (code.className.match(/language-(\w+)/) || [])[1] || ""
-        : "";
-      const content = (code ? code : pre).textContent;
-      pre.replaceWith(`\n\`\`\`${lang}\n${content}\n\`\`\`\n`);
-    });
-
-    // Add newlines after block elements
-    clone.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, br, div").forEach((el) => {
-      el.append(document.createTextNode("\n"));
-    });
-
-    return clone.textContent.replace(/\n{3,}/g, "\n\n").trim();
-  }
-
-  /**
-   * Convert an HTML element's content to Markdown.
-   * Handles headings, bold, italic, inline code, code blocks,
-   * ordered/unordered lists, and links.
-   */
-  function elementToMarkdown(el) {
-    function nodeToMd(node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return node.textContent;
-      }
-      if (node.nodeType !== Node.ELEMENT_NODE) return "";
-
-      const tag  = node.tagName.toLowerCase();
-      const kids = Array.from(node.childNodes).map(nodeToMd).join("");
-
-      switch (tag) {
-        case "h1": return `\n# ${kids}\n`;
-        case "h2": return `\n## ${kids}\n`;
-        case "h3": return `\n### ${kids}\n`;
-        case "h4": return `\n#### ${kids}\n`;
-        case "h5": return `\n##### ${kids}\n`;
-        case "h6": return `\n###### ${kids}\n`;
-        case "strong":
-        case "b":  return `**${kids}**`;
-        case "em":
-        case "i":  return `*${kids}*`;
-        case "s":
-        case "del":return `~~${kids}~~`;
-        case "a": {
-          const href = node.getAttribute("href");
-          return href ? `[${kids}](${href})` : kids;
-        }
-        case "code": {
-          // inline code only — pre > code is handled below
-          if (node.parentElement && node.parentElement.tagName.toLowerCase() === "pre") {
-            return node.textContent; // handled by "pre"
-          }
-          return `\`${node.textContent}\``;
-        }
-        case "pre": {
-          const codeEl = node.querySelector("code");
-          const lang   = codeEl
-            ? (codeEl.className.match(/language-(\w+)/) || [])[1] || ""
-            : "";
-          const body   = (codeEl || node).textContent;
-          return `\n\`\`\`${lang}\n${body}\n\`\`\`\n`;
-        }
-        case "ul": {
-          const items = Array.from(node.children)
-            .filter((c) => c.tagName.toLowerCase() === "li")
-            .map((li) => `- ${nodeToMd(li).trim()}`)
-            .join("\n");
-          return `\n${items}\n`;
-        }
-        case "ol": {
-          const items = Array.from(node.children)
-            .filter((c) => c.tagName.toLowerCase() === "li")
-            .map((li, i) => `${i + 1}. ${nodeToMd(li).trim()}`)
-            .join("\n");
-          return `\n${items}\n`;
-        }
-        case "li":  return kids;
-        case "br":  return "\n";
-        case "hr":  return "\n---\n";
-        case "blockquote": return kids.split("\n").map((l) => `> ${l}`).join("\n");
-        case "p":   return `\n${kids}\n`;
-        case "div":
-        case "section":
-        case "article": return `\n${kids}\n`;
-        default:    return kids;
-      }
+    if (PLATFORM === 'claude') {
+      const el = qOne(['[class*="conversation-title"]', '.font-tiempos-heading', 'h1', '.truncate']);
+      if (el?.textContent.trim()) return el.textContent.trim();
+      return document.title.replace(/\s*[-–]\s*Claude.*/i, '').trim() || 'conversation';
     }
-
-    const md = nodeToMd(el);
-    return md.replace(/\n{3,}/g, "\n\n").trim();
+    if (PLATFORM === 'gemini') {
+      return document.title.replace(/\s*[-–]\s*Gemini.*/i, '').trim() || 'conversation';
+    }
+    return document.title || 'conversation';
   }
 
-  /**
-   * Extract all messages from the current ChatGPT page.
-   * Returns an array of { role: string, textContent: string, htmlContent: string }.
-   */
-  function extractMessages() {
-    const messages = [];
+  // ── Message listener ─────────────────────────────────────────────────────────
 
-    // Try each message selector until one returns results
-    let turns = [];
-    for (const sel of SELECTORS.messages) {
-      turns = Array.from(document.querySelectorAll(sel));
-      if (turns.length) break;
+  api.runtime.onMessage.addListener((msg, _sender, send) => {
+    if (msg.action === 'getStats') {
+      const msgs  = extract();
+      const words = msgs.reduce((a, m) => a + m.text.split(/\s+/).filter(Boolean).length, 0);
+      send({ platform: PLATFORM, title: getTitle(), messageCount: msgs.length, wordCount: words });
+      return; // sync — no need to return true
     }
-
-    if (!turns.length) return messages;
-
-    // If we matched by role attribute directly, de-duplicate by ancestor
-    // article elements when possible
-    if (!turns[0].matches('article[data-testid^="conversation-turn"]')) {
-      // Wrap results that aren't already deduplicated
-      const seen = new Set();
-      turns = turns.filter((el) => {
-        if (seen.has(el)) return false;
-        seen.add(el);
-        return true;
+    if (msg.action === 'extractData') {
+      autoScroll().then(() => {
+        send({ platform: PLATFORM, title: getTitle(), messages: extract() });
       });
-    }
-
-    for (const turn of turns) {
-      // Determine role
-      const roleEl = turn.hasAttribute(SELECTORS.role)
-        ? turn
-        : turn.querySelector(`[${SELECTORS.role}]`);
-
-      if (!roleEl) continue;
-
-      const role = roleEl.getAttribute(SELECTORS.role) || "unknown";
-
-      // Find the prose/content container
-      let contentEl = queryFirst(SELECTORS.prose, turn);
-      if (!contentEl) {
-        // Fallback: the role element itself
-        contentEl = roleEl;
-      }
-
-      // Skip empty turns (e.g. tool-use internals)
-      const rawText = contentEl.textContent.trim();
-      if (!rawText) continue;
-
-      messages.push({
-        role,
-        textContent: elementToText(contentEl),
-        markdownContent: elementToMarkdown(contentEl),
-        htmlContent: contentEl.innerHTML,
-      });
-    }
-
-    return messages;
-  }
-
-  // ─── Auto-scroll ─────────────────────────────────────────────────────────────
-
-  /**
-   * Scrolls through the conversation to trigger lazy loading,
-   * then resolves once scrolling stabilises.
-   */
-  async function autoScroll() {
-    const scrollable =
-      document.querySelector("main") ||
-      document.querySelector('[class*="overflow-y-auto"]') ||
-      document.documentElement;
-
-    return new Promise((resolve) => {
-      let lastHeight = 0;
-      let stable     = 0;
-
-      function step() {
-        scrollable.scrollTop = scrollable.scrollHeight;
-        const h = scrollable.scrollHeight;
-
-        if (h === lastHeight) {
-          stable++;
-          if (stable >= 3) {
-            resolve();
-            return;
-          }
-        } else {
-          stable = 0;
-          lastHeight = h;
-        }
-
-        setTimeout(step, 300);
-      }
-
-      step();
-    });
-  }
-
-  // ─── Formatters ──────────────────────────────────────────────────────────────
-
-  function formatTXT(messages, title) {
-    const lines = [
-      `ChatGPT Conversation — ${title}`,
-      `Exported: ${new Date().toLocaleString()}`,
-      "═".repeat(60),
-      "",
-    ];
-    for (const msg of messages) {
-      const label = msg.role === "user" ? "USER" : "ASSISTANT";
-      lines.push(`[${label}]`, msg.textContent, "─".repeat(60), "");
-    }
-    return lines.join("\n");
-  }
-
-  function formatMarkdown(messages, title) {
-    const lines = [
-      `# ${title}`,
-      `*Exported ${new Date().toLocaleString()} via ChatGPT Conversation Saver*`,
-      "",
-      "---",
-      "",
-    ];
-    for (const msg of messages) {
-      const heading = msg.role === "user" ? "### 👤 User" : "### 🤖 Assistant";
-      lines.push(heading, "", msg.markdownContent, "", "---", "");
-    }
-    return lines.join("\n");
-  }
-
-  function formatJSON(messages, title) {
-    const data = {
-      title,
-      exportedAt: new Date().toISOString(),
-      source:     window.location.href,
-      messages:   messages.map(({ role, textContent }) => ({
-        role,
-        content: textContent,
-      })),
-    };
-    return JSON.stringify(data, null, 2);
-  }
-
-  function formatHTML(messages, title) {
-    const rows = messages
-      .map(({ role, htmlContent }) => {
-        const cls     = role === "user" ? "user" : "assistant";
-        const label   = role === "user" ? "User" : "Assistant";
-        const safeLabel = escapeHTML(label);
-        return `
-      <article class="message ${cls}">
-        <header class="role-label">${safeLabel}</header>
-        <div class="body">${htmlContent}</div>
-      </article>`;
-      })
-      .join("\n");
-
-    const safeTitle = escapeHTML(title);
-    const exportDate = new Date().toLocaleString();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${safeTitle}</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      font-size: 16px;
-      line-height: 1.65;
-      background: #f9f9f9;
-      color: #1a1a1a;
-      padding: 2rem 1rem;
-    }
-    .wrapper {
-      max-width: 780px;
-      margin: 0 auto;
-    }
-    h1 {
-      font-size: 1.5rem;
-      margin-bottom: .25rem;
-      word-break: break-word;
-    }
-    .meta {
-      font-size: .85rem;
-      color: #666;
-      margin-bottom: 2rem;
-    }
-    .message {
-      background: #fff;
-      border: 1px solid #e0e0e0;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1.25rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,.05);
-    }
-    .message.user   { border-left: 4px solid #10a37f; }
-    .message.assistant { border-left: 4px solid #6e6e6e; }
-    .role-label {
-      font-size: .75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      margin-bottom: .75rem;
-      color: #555;
-    }
-    .message.user .role-label   { color: #10a37f; }
-    .body p  { margin-bottom: .85rem; }
-    .body p:last-child { margin-bottom: 0; }
-    .body pre {
-      background: #1e1e1e;
-      color: #d4d4d4;
-      padding: 1rem 1.25rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-family: "Fira Code", "Cascadia Code", Consolas, monospace;
-      font-size: .875rem;
-      line-height: 1.5;
-      margin: .75rem 0;
-    }
-    .body code {
-      background: #f0f0f0;
-      padding: .15em .35em;
-      border-radius: 4px;
-      font-family: "Fira Code", Consolas, monospace;
-      font-size: .875em;
-    }
-    .body pre code { background: transparent; padding: 0; }
-    .body ul, .body ol { padding-left: 1.5rem; margin-bottom: .75rem; }
-    .body li { margin-bottom: .3rem; }
-    .body strong { font-weight: 700; }
-    .body em     { font-style: italic; }
-    .body a      { color: #10a37f; }
-    .body h1,.body h2,.body h3,.body h4 {
-      margin: 1rem 0 .5rem;
-      line-height: 1.3;
-    }
-    .body table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: .75rem 0;
-    }
-    .body th, .body td {
-      border: 1px solid #ddd;
-      padding: .4rem .75rem;
-      text-align: left;
-    }
-    .body th { background: #f4f4f4; font-weight: 600; }
-    @media (prefers-color-scheme: dark) {
-      body { background: #121212; color: #e0e0e0; }
-      .message { background: #1e1e1e; border-color: #333; }
-      .body code { background: #2a2a2a; }
-      .body th { background: #2a2a2a; }
-      .body th, .body td { border-color: #444; }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <h1>${safeTitle}</h1>
-    <p class="meta">Exported ${escapeHTML(exportDate)} · ${messages.length} messages</p>
-    ${rows}
-  </div>
-</body>
-</html>`;
-  }
-
-  // ─── Download helper ──────────────────────────────────────────────────────────
-
-  function downloadFile(content, filename, mimeType) {
-    const blob   = new Blob([content], { type: `${mimeType};charset=utf-8` });
-    const url    = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href     = url;
-    anchor.download = filename;
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-    anchor.click();
-    // Clean up after a short delay
-    setTimeout(() => {
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    }, 1000);
-  }
-
-  async function copyToClipboard(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    // Fallback for older Firefox builds
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity  = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  }
-
-  // ─── Toast notification ───────────────────────────────────────────────────────
-
-  function showToast(msg, isError = false) {
-    const old = document.getElementById(TOAST_ID);
-    if (old) old.remove();
-
-    const toast = document.createElement("div");
-    toast.id = TOAST_ID;
-    toast.setAttribute("role", "status");
-    toast.setAttribute("aria-live", "polite");
-    toast.textContent = msg;
-    if (isError) toast.classList.add("ccs-toast--error");
-    document.body.appendChild(toast);
-
-    // Trigger reflow then animate in
-    void toast.offsetWidth;
-    toast.classList.add("ccs-toast--visible");
-
-    setTimeout(() => {
-      toast.classList.remove("ccs-toast--visible");
-      setTimeout(() => toast.remove(), 400);
-    }, 3000);
-  }
-
-  // ─── Modal ────────────────────────────────────────────────────────────────────
-
-  function createModal() {
-    const overlay = document.createElement("div");
-    overlay.id            = MODAL_ID;
-    overlay.className     = "ccs-overlay";
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-labelledby", "ccs-modal-title");
-
-    overlay.innerHTML = `
-      <div class="ccs-modal" role="document">
-        <header class="ccs-modal__header">
-          <h2 id="ccs-modal-title" class="ccs-modal__title">Save Conversation</h2>
-          <button class="ccs-modal__close" aria-label="Close" data-ccs-close>&#x2715;</button>
-        </header>
-
-        <p class="ccs-modal__sub">Choose a format to export locally — nothing leaves your device.</p>
-
-        <div class="ccs-modal__grid">
-          <button class="ccs-format-btn" data-format="txt">
-            <span class="ccs-format-btn__icon">&#128221;</span>
-            <span class="ccs-format-btn__label">Plain Text</span>
-            <span class="ccs-format-btn__ext">.txt</span>
-          </button>
-          <button class="ccs-format-btn" data-format="md">
-            <span class="ccs-format-btn__icon">&#35;</span>
-            <span class="ccs-format-btn__label">Markdown</span>
-            <span class="ccs-format-btn__ext">.md</span>
-          </button>
-          <button class="ccs-format-btn" data-format="json">
-            <span class="ccs-format-btn__icon">&#123;&#125;</span>
-            <span class="ccs-format-btn__label">JSON</span>
-            <span class="ccs-format-btn__ext">.json</span>
-          </button>
-          <button class="ccs-format-btn" data-format="html">
-            <span class="ccs-format-btn__icon">&#60;/&#62;</span>
-            <span class="ccs-format-btn__label">HTML</span>
-            <span class="ccs-format-btn__ext">.html</span>
-          </button>
-        </div>
-
-        <div class="ccs-modal__divider"></div>
-
-        <button class="ccs-copy-btn" data-format="copy">
-          <span class="ccs-copy-btn__icon">&#128203;</span>
-          Copy to Clipboard (Markdown)
-        </button>
-
-        <div class="ccs-progress" id="ccs-progress" aria-hidden="true">
-          <div class="ccs-progress__bar"></div>
-          <span class="ccs-progress__label">Loading messages…</span>
-        </div>
-      </div>`;
-
-    document.body.appendChild(overlay);
-    return overlay;
-  }
-
-  function openModal() {
-    let overlay = document.getElementById(MODAL_ID);
-    if (!overlay) overlay = createModal();
-    overlay.classList.add("ccs-overlay--visible");
-
-    // Trap focus
-    const firstBtn = overlay.querySelector("button");
-    if (firstBtn) firstBtn.focus();
-  }
-
-  function closeModal() {
-    const overlay = document.getElementById(MODAL_ID);
-    if (overlay) overlay.classList.remove("ccs-overlay--visible");
-  }
-
-  // ─── Core export flow ─────────────────────────────────────────────────────────
-
-  async function runExport(format) {
-    const progress = document.getElementById("ccs-progress");
-    if (progress) {
-      progress.setAttribute("aria-hidden", "false");
-      progress.classList.add("ccs-progress--visible");
-    }
-
-    try {
-      await autoScroll();
-
-      const messages = extractMessages();
-      if (!messages.length) {
-        showToast("No messages found — is there an active conversation?", true);
-        return;
-      }
-
-      const rawTitle = getTitle();
-      const title    = rawTitle;
-      const filename = sanitiseFilename(rawTitle);
-
-      let content, ext, mime;
-
-      switch (format) {
-        case "txt":
-          content = formatTXT(messages, title);
-          ext     = "txt";
-          mime    = "text/plain";
-          break;
-        case "md":
-          content = formatMarkdown(messages, title);
-          ext     = "md";
-          mime    = "text/markdown";
-          break;
-        case "json":
-          content = formatJSON(messages, title);
-          ext     = "json";
-          mime    = "application/json";
-          break;
-        case "html":
-          content = formatHTML(messages, title);
-          ext     = "html";
-          mime    = "text/html";
-          break;
-        case "copy":
-          content = formatMarkdown(messages, title);
-          await copyToClipboard(content);
-          showToast(`Copied ${messages.length} messages to clipboard!`);
-          return;
-        default:
-          return;
-      }
-
-      downloadFile(content, `${filename}.${ext}`, mime);
-      showToast(`Saved "${title}" as .${ext} (${messages.length} messages)`);
-
-    } catch (err) {
-      console.error("[ChatGPT Saver]", err);
-      showToast("Export failed — see browser console for details.", true);
-    } finally {
-      closeModal();
-      if (progress) {
-        progress.setAttribute("aria-hidden", "true");
-        progress.classList.remove("ccs-progress--visible");
-      }
-    }
-  }
-
-  // ─── Floating button ──────────────────────────────────────────────────────────
-
-  function createFloatingButton() {
-    if (document.getElementById(BTN_ID)) return;
-
-    const btn = document.createElement("button");
-    btn.id          = BTN_ID;
-    btn.className   = "ccs-fab";
-    btn.title       = "Save conversation";
-    btn.setAttribute("aria-label", "Save conversation");
-    btn.innerHTML   = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-           aria-hidden="true" focusable="false" width="22" height="22">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>`;
-
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openModal();
-    });
-
-    document.body.appendChild(btn);
-  }
-
-  // ─── Event delegation for modal ───────────────────────────────────────────────
-
-  document.addEventListener("click", (e) => {
-    const overlay = document.getElementById(MODAL_ID);
-    if (!overlay) return;
-
-    // Close on backdrop click
-    if (e.target === overlay) {
-      closeModal();
-      return;
-    }
-
-    // Close button
-    if (e.target.closest("[data-ccs-close]")) {
-      closeModal();
-      return;
-    }
-
-    // Format buttons
-    const btn = e.target.closest("[data-format]");
-    if (btn) {
-      runExport(btn.dataset.format);
+      return true; // async
     }
   });
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeModal();
-  });
-
-  // ─── SPA route change detection ───────────────────────────────────────────────
-  // ChatGPT is a React SPA — inject button after navigation too.
-
-  let _lastUrl = location.href;
-
-  function onRouteChange() {
-    const url = location.href;
-    if (url === _lastUrl) return;
-    _lastUrl = url;
-    // Give React time to render before injecting
-    setTimeout(createFloatingButton, 800);
-  }
-
-  // Observe URL changes via pushState / popstate
-  const _pushState = history.pushState.bind(history);
-  history.pushState = function (...args) {
-    _pushState(...args);
-    onRouteChange();
-  };
-  window.addEventListener("popstate", onRouteChange);
-
-  // Also observe DOM mutations as a safety net
-  const _observer = new MutationObserver(() => {
-    onRouteChange();
-    if (!document.getElementById(BTN_ID)) {
-      createFloatingButton();
-    }
-  });
-  _observer.observe(document.body, { childList: true, subtree: false });
-
-  // ─── Init ─────────────────────────────────────────────────────────────────────
-
-  function init() {
-    createFloatingButton();
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
 })();
